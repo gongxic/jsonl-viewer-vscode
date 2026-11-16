@@ -396,6 +396,7 @@ function applyColumnPreferences(m) {
   if (m.schema !== S.columnSchema || S.profileName) return;
   if (!m.found) { saveColumnPreferences(); return; }
   applyLayoutPreferences(m);
+  if (m.syncGlobal) saveColumnPreferences();
 }
 
 function applyColumnProfile(m) {

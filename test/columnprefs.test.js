@@ -28,7 +28,7 @@ test('workspace column preferences persist and match a schema regardless of colu
     widths: { level: 160, message: 400 },
     order: ['message', 'level'],
   });
-  assert.equal(preferences.get(['level', 'message', 'timestamp']).found, false);
+  assert.equal(preferences.get(['level', 'message', 'timestamp']).found, true);
 });
 
 test('workspace preferences discard unknown columns and invalid widths', async () => {
@@ -42,6 +42,49 @@ test('workspace preferences discard unknown columns and invalid widths', async (
   assert.deepEqual(preferences.get(['level', 'message']).hidden, ['message']);
   assert.deepEqual(preferences.get(['level', 'message']).widths, { level: 160 });
   assert.deepEqual(preferences.get(['level', 'message']).order, ['message', 'level']);
+});
+
+test('workspace settings follow shared columns across changing log schemas', async () => {
+  const preferences = createColumnPreferences(stateStore());
+  await preferences.set(['@t', '@l', '@mt'], {
+    hidden: ['@mt'],
+    widths: { '@t': 240 },
+    order: ['@t', '@l', '@mt'],
+  });
+
+  assert.deepEqual(preferences.get(['@t', '@mt', '@r']), {
+    schema: JSON.stringify(['@mt', '@r', '@t']),
+    found: true,
+    hidden: ['@mt'],
+    widths: { '@t': 240 },
+    order: ['@t', '@mt', '@r'],
+  });
+});
+
+test('legacy schema settings seed the shared workspace preferences', async () => {
+  const state = stateStore();
+  await state.update('jsonlViewer.columnPreferences.v1', {
+    [JSON.stringify(['level', 'message'])]: {
+      hidden: ['message'],
+      widths: { level: 180 },
+      order: ['message', 'level'],
+    },
+  });
+  const preferences = createColumnPreferences(state);
+  const migrated = preferences.get(['message', 'level', 'timestamp']);
+  assert.equal(migrated.found, true);
+  assert.equal(migrated.syncGlobal, true);
+  assert.deepEqual(migrated.hidden, ['message']);
+  assert.deepEqual(migrated.widths, { level: 180 });
+  assert.deepEqual(migrated.order, ['message', 'level', 'timestamp']);
+
+  await preferences.set(['message', 'level', 'timestamp'], migrated);
+  const nextSchema = preferences.get(['timestamp', 'level', 'event']);
+  assert.equal(nextSchema.found, true);
+  assert.equal(nextSchema.syncGlobal, undefined);
+  assert.deepEqual(nextSchema.hidden, []);
+  assert.deepEqual(nextSchema.widths, { level: 180 });
+  assert.deepEqual(nextSchema.order, ['level', 'timestamp', 'event']);
 });
 
 test('named layouts can be reused with different schemas and deleted', async () => {
