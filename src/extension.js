@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const { createSession, JsonlDoc } = require('./core/protocol');
 const { TooBigError } = require('./core/doc');
+const { createColumnPreferences } = require('./core/columnprefs');
 const { buildHtml } = require('./html');
 const L = require('./core/limits');
 const { createRatingPrompt } = require('./rate');
@@ -32,6 +33,7 @@ class JsonlEditorProvider {
       styleUri: panel.webview.asWebviewUri(vscode.Uri.joinPath(media, 'webview.css')).toString(),
       title: path.posix.basename(uri.path),
       showSupportLinks: showLinks(vscode, 'jsonlViewer'),
+      timestampDisplay: vscode.workspace.getConfiguration('jsonlViewer').get('timestampDisplay', 'utc'),
     });
 
     const makeDoc = () => new JsonlDoc({ path: uri.fsPath });
@@ -56,7 +58,71 @@ class JsonlEditorProvider {
         openWriter: (format, name) => openWriter(uri, format, name),
       },
     });
-    panel.webview.onDidReceiveMessage(m => session.handle(m));
+    const columnPreferences = createColumnPreferences(ctx.workspaceState);
+    panel.webview.onDidReceiveMessage(async m => {
+      if (m && m.type === 'getColumnPreferences') {
+        try {
+          await panel.webview.postMessage({ type: 'columnPreferences', ...columnPreferences.get(m.columns) });
+        } catch (error) {
+          vscode.window.showErrorMessage(`JSONL Viewer could not load workspace column preferences: ${error.message}`);
+        }
+        return;
+      }
+      if (m && m.type === 'saveColumnPreferences') {
+        try {
+          await columnPreferences.set(m.columns, m);
+        } catch (error) {
+          vscode.window.showErrorMessage(`JSONL Viewer could not save workspace column preferences: ${error.message}`);
+        }
+        return;
+      }
+      if (m && m.type === 'getColumnProfiles') {
+        try {
+          await panel.webview.postMessage({ type: 'columnProfiles', profiles: columnPreferences.listProfiles() });
+        } catch (error) {
+          vscode.window.showErrorMessage(`JSONL Viewer could not load saved column layouts: ${error.message}`);
+        }
+        return;
+      }
+      if (m && m.type === 'getColumnProfile') {
+        try {
+          await panel.webview.postMessage({
+            type: 'columnProfile',
+            ...columnPreferences.getProfile(m.name, m.columns),
+          });
+        } catch (error) {
+          vscode.window.showErrorMessage(`JSONL Viewer could not load the column layout: ${error.message}`);
+        }
+        return;
+      }
+      if (m && m.type === 'saveColumnProfile') {
+        try {
+          await columnPreferences.saveProfile(m.name, m.columns, m);
+          await panel.webview.postMessage({
+            type: 'columnProfiles',
+            profiles: columnPreferences.listProfiles(),
+            saved: m.name,
+          });
+        } catch (error) {
+          vscode.window.showErrorMessage(`JSONL Viewer could not save the column layout: ${error.message}`);
+        }
+        return;
+      }
+      if (m && m.type === 'deleteColumnProfile') {
+        try {
+          await columnPreferences.deleteProfile(m.name);
+          await panel.webview.postMessage({
+            type: 'columnProfiles',
+            profiles: columnPreferences.listProfiles(),
+            deleted: m.name,
+          });
+        } catch (error) {
+          vscode.window.showErrorMessage(`JSONL Viewer could not delete the column layout: ${error.message}`);
+        }
+        return;
+      }
+      session.handle(m);
+    });
     session.start();
 
     // Live tail: fs.watch plus a slow poll while the tab is visible (some file systems drop events).
@@ -130,8 +196,8 @@ async function openWriter(uri, format, name) {
 }
 
 function activate(context) {
-  rating = createRatingPrompt({ vscode, context, extensionId: 'zovo.zovo-jsonl-viewer', section: 'jsonlViewer', message: (n) => `JSONL Viewer has opened ${n} files for you. A rating helps other people find it.` });
-  registerSupport({ vscode, context, prefix: 'jsonlViewer', selfId: 'zovo.zovo-jsonl-viewer' });
+  rating = createRatingPrompt({ vscode, context, extensionId: 'gavin.jsonl-viewer', section: 'jsonlViewer', message: (n) => `JSONL Viewer has opened ${n} files for you. A rating helps other people find it.` });
+  registerSupport({ vscode, context, prefix: 'jsonlViewer', selfId: 'gavin.jsonl-viewer' });
   context.subscriptions.push(
     vscode.window.registerCustomEditorProvider(VIEW_TYPE, new JsonlEditorProvider(context), {
       supportsMultipleEditorsPerDocument: true,
@@ -151,7 +217,7 @@ function activate(context) {
       await vscode.commands.executeCommand('vscode.openWith', target, VIEW_TYPE);
     }),
     vscode.commands.registerCommand('jsonlViewer.getStarted', () =>
-      vscode.commands.executeCommand('workbench.action.openWalkthrough', 'zovo.zovo-jsonl-viewer#jsonlViewer.start', false)),
+      vscode.commands.executeCommand('workbench.action.openWalkthrough', 'gavin.jsonl-viewer#jsonlViewer.start', false)),
   );
 }
 

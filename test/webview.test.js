@@ -11,13 +11,14 @@ const M = require('../src/webview/math');
 const root = path.join(__dirname, '..');
 
 test('CSP: no remote scripts, nonce on the script, title escaped', () => {
-  const html = buildHtml({ cspSource: 'vscode-resource:', scriptUri: 'a.js', styleUri: 'a.css', title: '<b>"x".jsonl', nonce: 'n0nce' });
+  const html = buildHtml({ cspSource: 'vscode-resource:', scriptUri: 'a.js', styleUri: 'a.css', title: '<b>"x".jsonl', nonce: 'n0nce', timestampDisplay: 'local' });
   const csp = html.match(/content="([^"]+)"/)[1];
   assert.match(csp, /default-src 'none'/);
   assert.match(csp, /script-src 'nonce-n0nce'/);
   assert.doesNotMatch(csp, /https?:|unsafe-inline|unsafe-eval/);
   assert.ok(html.includes('&lt;b&gt;&quot;x&quot;.jsonl'));
   assert.ok(!html.includes('<b>"x"'));
+  assert.match(html, /data-timestamp-display="local"/);
 });
 
 test('webview code never writes HTML strings and makes no network calls', () => {
@@ -45,6 +46,29 @@ test('grid math: scroll maps to rows past the browser height limit', () => {
   assert.strictEqual(M.scrollToRow(top, rows, h, vh).first, 4000000);
   assert.deepStrictEqual(M.pagesFor(150, 450, 200), [0, 1, 2]);
   assert.deepStrictEqual(M.nextSort(null, 2), { col: 2, dir: 'asc' });
+});
+
+test('ISO timestamps are formatted only in timestamp columns and support UTC, local and raw modes', () => {
+  const utc = '2026-11-16T09:50:36Z';
+  assert.equal(M.formatTimestamp(utc, 'timestamp'), '2026-11-16 09:50:36 UTC');
+  assert.equal(M.formatTimestamp('2026-11-16T09:50:36.123456Z', 'createdAt'), '2026-11-16 09:50:36.123456 UTC');
+  assert.equal(M.formatTimestamp('2026-11-16T17:50:36+08:00', 'event_time'), '2026-11-16 09:50:36 UTC');
+  assert.equal(M.formatTimestamp(utc, 'message'), utc);
+  assert.equal(M.formatTimestamp(utc, 'timestamp', 'raw'), utc);
+  const date = new Date(utc);
+  const pad = n => String(n).padStart(2, '0');
+  const localExpected = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+  assert.equal(M.formatTimestamp(utc, 'timestamp', 'local'), `${localExpected} UTC${date.getTimezoneOffset() <= 0 ? '+' : '-'}${pad(Math.floor(Math.abs(date.getTimezoneOffset()) / 60))}:${pad(Math.abs(date.getTimezoneOffset()) % 60)}`);
+  assert.equal(M.formatTimestamp('2026-11-16', 'date'), '2026-11-16');
+  assert.equal(M.formatTimestamp('2026-02-31T09:50:36Z', 'timestamp'), '2026-02-31T09:50:36Z');
+});
+
+test('column order moves before or after a target without changing the source array', () => {
+  const order = ['a', 'b', 'c', 'd'];
+  assert.deepStrictEqual(M.moveColumn(order, 'a', 'c'), ['b', 'a', 'c', 'd']);
+  assert.deepStrictEqual(M.moveColumn(order, 'a', 'c', true), ['b', 'c', 'a', 'd']);
+  assert.deepStrictEqual(order, ['a', 'b', 'c', 'd']);
+  assert.strictEqual(M.moveColumn(order, 'a', 'missing'), order);
 });
 
 test('auto-size resizes the table stage, so the last column is never cut off', () => {

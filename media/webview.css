@@ -58,6 +58,10 @@ input:focus, select:focus { outline: 1px solid var(--vscode-focusBorder); outlin
 .hcell { display: flex; flex-direction: column; justify-content: center; gap: 2px; cursor: pointer; user-select: none; font-family: var(--vscode-font-family); line-height: 16px; }
 .hcell:hover { background: var(--vscode-list-hoverBackground); }
 .hrow { display: flex; gap: 6px; align-items: center; font-weight: 600; font-size: 12px; }
+.draghandle { cursor: grab; opacity: .5; padding: 0 2px; }
+.draghandle:hover { opacity: 1; }
+.draghandle:active { cursor: grabbing; }
+.hcell.drop-target { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
 .hname { overflow: hidden; text-overflow: ellipsis; }
 .hsub { display: flex; gap: 6px; align-items: center; font-size: 10px; }
 .htype { padding: 0 4px; border-radius: 3px; border: 1px solid currentColor; line-height: 13px; }
@@ -125,7 +129,7 @@ input:focus, select:focus { outline: 1px solid var(--vscode-focusBorder); outlin
 .resizer:hover, body.resizing .resizer { background: var(--vscode-focusBorder, #007fd4); opacity: .6; }
 body.resizing, body.resizing * { cursor: col-resize !important; user-select: none; }
 .btn.on { border-color: var(--vscode-focusBorder, #007fd4); }
-.colmenu { position: fixed; z-index: 50; width: 300px; max-height: 60vh; display: flex; flex-direction: column; gap: 6px; padding: 8px; background: var(--vscode-editorWidget-background, var(--vscode-editor-background)); color: var(--vscode-editorWidget-foreground, inherit); border: 1px solid var(--vscode-editorWidget-border, rgba(128,128,128,.4)); border-radius: 4px; box-shadow: 0 4px 14px rgba(0,0,0,.35); }
+.colmenu { position: fixed; z-index: 50; width: min(420px, calc(100vw - 16px)); max-height: 60vh; display: flex; flex-direction: column; gap: 6px; padding: 8px; background: var(--vscode-editorWidget-background, var(--vscode-editor-background)); color: var(--vscode-editorWidget-foreground, inherit); border: 1px solid var(--vscode-editorWidget-border, rgba(128,128,128,.4)); border-radius: 4px; box-shadow: 0 4px 14px rgba(0,0,0,.35); }
 .colmenu[hidden] { display: none; }
 .colmenu-top { display: flex; gap: 8px; align-items: center; }
 .colfind { flex: 1; min-width: 0; }
@@ -137,3 +141,6 @@ body.resizing, body.resizing * { cursor: col-resize !important; user-select: non
 .coltype { font-size: 11px; opacity: .75; }
 .colnote { font-size: 11px; opacity: .75; }
 .colitem input { padding: 0; margin: 0; }
+.profilebar { display: grid; grid-template-columns: minmax(0, 1fr) minmax(60px, 1fr) auto auto; align-items: center; gap: 5px; padding: 0 0 2px; }
+.profile-select, .profile-name { min-width: 0; width: 100%; }
+.profilebar .btn { padding: 4px 7px; }

@@ -23,7 +23,7 @@ const FUNDING_LABELS = {
 };
 
 // This extension's Marketplace id. The footer's "Rate" link opens its review page; nothing asks for a rating.
-const SELF_ID = "zovo.zovo-jsonl-viewer";
+const SELF_ID = "gavin.jsonl-viewer";
 
 // [id, name, one line]. Live ones are on the Marketplace. Queued ones are not there yet: they open GitHub.
 const LIVE = [
@@ -53,8 +53,8 @@ const LIVE = [
     "shows large JSON files as a searchable tree, copies JSONPath and turns arrays of objects into a table."
   ],
   [
-    "zovo.zovo-jsonl-viewer",
-    "JSONL Viewer, Large JSONL Table & NDJSON Viewer",
+    "gavin.jsonl-viewer",
+    "JSONL Viewer",
     "opens JSONL and NDJSON files as a table, as records or as a chat view."
   ],
   [
@@ -182,22 +182,22 @@ const PAIRS = [
   ["zovo.docx-viewer-vscode", "zovo.pptx-slide-viewer", 0.284],
   ["zovo.docx-viewer-vscode", "zovo.pdf-viewer-dark", 0.24],
   ["zovo.agent-session-viewer", "zovo.ai-usage-meter", 0.236],
-  ["zovo.zovo-json-tree-viewer", "zovo.zovo-jsonl-viewer", 0.228],
+  ["zovo.zovo-json-tree-viewer", "gavin.jsonl-viewer", 0.228],
   ["zovo.zovo-json-tree-viewer", "zovo.table-viewer-vscode", 0.216],
   ["zovo.hdf5-netcdf-explorer", "zovo.tensor-viewer", 0.208],
   ["zovo.docx-viewer-vscode", "zovo.table-viewer-vscode", 0.197],
   ["zovo.pptx-slide-viewer", "zovo.table-viewer-vscode", 0.18],
   ["zovo.pdf-viewer-dark", "zovo.table-viewer-vscode", 0.152],
   ["zovo.sqlite-table-viewer", "zovo.table-viewer-vscode", 0.15],
-  ["zovo.zovo-jsonl-viewer", "zovo.table-viewer-vscode", 0.14],
+  ["gavin.jsonl-viewer", "zovo.table-viewer-vscode", 0.14],
   ["zovo.pdf-viewer-dark", "zovo.pptx-slide-viewer", 0.129],
   ["zovo.context-drift", "zovo.skill-shelf", 0.129],
   ["zovo.zovo-json-tree-viewer", "zovo.sqlite-table-viewer", 0.111],
   ["zovo.pdf-viewer-dark", "zovo.video-preview-with-sound", 0.056],
-  ["zovo.zovo-jsonl-viewer", "zovo.agent-session-viewer", 0.053],
+  ["gavin.jsonl-viewer", "zovo.agent-session-viewer", 0.053],
   ["zovo.skill-shelf", "zovo.ai-usage-meter", 0.046],
   ["zovo.context-drift", "zovo.ai-usage-meter", 0.043],
-  ["zovo.zovo-jsonl-viewer", "zovo.sqlite-table-viewer", 0.04],
+  ["gavin.jsonl-viewer", "zovo.sqlite-table-viewer", 0.04],
   ["zovo.table-viewer-vscode", "zovo.tensor-viewer", 0.038],
   ["zovo.agent-session-viewer", "zovo.skill-shelf", 0.037],
   ["zovo.zovo-json-tree-viewer", "zovo.pdf-viewer-dark", 0.036],
@@ -205,7 +205,7 @@ const PAIRS = [
   ["zovo.zovo-json-tree-viewer", "zovo.ai-usage-meter", 0.029],
   ["zovo.docx-viewer-vscode", "zovo.zovo-json-tree-viewer", 0.028],
   ["zovo.context-drift", "zovo.agent-session-viewer", 0.028],
-  ["zovo.zovo-jsonl-viewer", "zovo.ai-usage-meter", 0.026],
+  ["gavin.jsonl-viewer", "zovo.ai-usage-meter", 0.026],
   ["zovo.zovo-json-tree-viewer", "zovo.agent-session-viewer", 0.025],
   ["zovo.table-viewer-vscode", "zovo.video-preview-with-sound", 0.024],
   ["zovo.agent-session-viewer", "zovo.sqlite-table-viewer", 0.024],
@@ -222,7 +222,7 @@ const PAIRS = [
   ["zovo.eml-viewer", "zovo.docx-viewer-vscode", 0.06],
   ["zovo.eml-viewer", "zovo.zip-archive-explorer", 0.06],
   ["zovo.zovo-epub-reader", "zovo.docx-viewer-vscode", 0.06],
-  ["zovo.arrow-avro-viewer", "zovo.zovo-jsonl-viewer", 0.06],
+  ["zovo.arrow-avro-viewer", "gavin.jsonl-viewer", 0.06],
   ["zovo.arrow-avro-viewer", "zovo.sqlite-table-viewer", 0.06],
   ["zovo.arrow-avro-viewer", "zovo.zovo-pickle-viewer", 0.06],
   ["zovo.zovo-pickle-viewer", "zovo.table-viewer-vscode", 0.06],

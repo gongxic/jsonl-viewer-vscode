@@ -21,6 +21,8 @@ async function started(file, host) {
 
 test('export message: hidden column names pass validation, junk is dropped', () => {
   assert.deepStrictEqual(validateWebviewMessage({ type: 'export', format: 'csv', hidden: ['a', 'b c'] }), { type: 'export', format: 'csv', hidden: ['a', 'b c'] });
+  assert.deepStrictEqual(validateWebviewMessage({ type: 'export', format: 'csv', order: ['b', 'a', 'b'] }), { type: 'export', format: 'csv', order: ['b', 'a'] });
+  assert.deepStrictEqual(validateWebviewMessage({ type: 'export', format: 'jsonl', order: ['b', 'a'] }), { type: 'export', format: 'jsonl' });
   assert.deepStrictEqual(validateWebviewMessage({ type: 'export', format: 'csv', hidden: [] }), { type: 'export', format: 'csv' });
   assert.deepStrictEqual(validateWebviewMessage({ type: 'export', format: 'csv', hidden: [1, 2] }), { type: 'export', format: 'csv' });
   assert.deepStrictEqual(validateWebviewMessage({ type: 'export', format: 'csv', hidden: 'a' }), { type: 'export', format: 'csv' });
@@ -47,6 +49,21 @@ test('CSV export leaves out hidden columns; JSON Lines keeps whole records', asy
   await next(m => m.type === 'job' && m.kind === 'export' && m.state === 'done');
   assert.strictEqual(files.csv.text.split('\r\n')[0], 'id,name,email,ctx');
   session.dispose();
+});
+
+test('CSV export follows the requested column order', async () => {
+  const f = T.file('ordered.csv.jsonl');
+  fs.writeFileSync(f, '{"id":1,"name":"Ada","email":"a@x.io"}\n');
+  const files = {};
+  const host = {
+    openWriter: async (format, name) => { let s = ''; files[format] = { name }; return { label: name, write: async x => { s += x; }, close: async () => { files[format].text = s; } }; },
+    info: () => {},
+  };
+  const { session, next } = await started(f, host);
+  await session.handle({ type: 'export', format: 'csv', order: ['email', 'id', 'name'] });
+  await next(m => m.type === 'job' && m.kind === 'export' && m.state === 'done');
+  assert.deepStrictEqual(files.csv.text.trim().split('\r\n'), ['email,id,name', 'a@x.io,1,Ada']);
+  await session.dispose();
 });
 
 test('a plain log opened as JSON Lines reports that no sampled line is JSON', async () => {

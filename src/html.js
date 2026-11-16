@@ -14,7 +14,7 @@ function escapeAttr(s) {
 }
 
 /**
- * @param {{cspSource:string, scriptUri:string, styleUri:string, title:string, nonce?:string, showSupportLinks?:boolean}} p
+ * @param {{cspSource:string, scriptUri:string, styleUri:string, title:string, nonce?:string, showSupportLinks?:boolean, timestampDisplay?:string}} p
  * showSupportLinks false hides the small Sponsor and More free viewers footer (setting jsonlViewer.showSupportLinks).
  * The webview script moves the footer into the status line at the bottom.
  */
@@ -39,7 +39,7 @@ ${footer ? `<style nonce="${n}">${FOOTER_CSS}</style>` : ''}
 <title>${escapeAttr(p.title)}</title>
 </head>
 <body>
-<div id="app" data-title="${escapeAttr(p.title)}"></div>
+<div id="app" data-title="${escapeAttr(p.title)}" data-timestamp-display="${escapeAttr(p.timestampDisplay || 'utc')}"></div>
 ${footer}
 <script nonce="${n}" src="${escapeAttr(p.scriptUri)}"></script>
 </body>

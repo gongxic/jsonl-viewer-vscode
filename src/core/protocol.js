@@ -35,10 +35,15 @@ function validateWebviewMessage(m) {
       return int(m.after, -1, BIG) ? { type: m.type, after: m.after } : null;
     case 'gotoLine':
       return int(m.line, 1, BIG) ? { type: m.type, line: m.line } : null;
-    case 'export':
+    case 'export': {
       if (!['csv', 'json', 'jsonl'].includes(m.format)) return null;
-      if (Array.isArray(m.hidden) && m.hidden.length && m.hidden.length <= 1000 && m.hidden.every(h => str(h, 1000))) return { type: m.type, format: m.format, hidden: m.hidden.slice() };
-      return { type: m.type, format: m.format };
+      const out = { type: m.type, format: m.format };
+      if (Array.isArray(m.hidden) && m.hidden.length && m.hidden.length <= 1000 && m.hidden.every(h => str(h, 1000))) out.hidden = m.hidden.slice();
+      if (m.format === 'csv' && Array.isArray(m.order) && m.order.length > 0 && m.order.length <= 300 && m.order.every(name => str(name, 1000))) {
+        out.order = [...new Set(m.order)];
+      }
+      return out;
+    }
     case 'openLine':
       return int(m.index, 0, BIG) ? { type: m.type, index: m.index } : null;
     case 'copy':
@@ -336,10 +341,19 @@ function createSession({ doc, post, host = {} }) {
     post({ type: 'found', what: 'bad', pos: -1 });
   }
 
-  async function doExport(format, hidden) {
+  async function doExport(format, hidden, order) {
     const hide = new Set(hidden || []);
     let cols = S.columns.filter(c => !hide.has(c.name));
     if (!cols.length) cols = S.columns;
+    if (format === 'csv' && Array.isArray(order)) {
+      const positions = new Map(order.map((name, i) => [name, i]));
+      cols.sort((a, b) => {
+        const ai = positions.get(a.name), bi = positions.get(b.name);
+        if (ai === undefined) return bi === undefined ? 0 : 1;
+        if (bi === undefined) return -1;
+        return ai - bi;
+      });
+    }
     if (!host.openWriter) return;
     const base = S.doc.name.replace(/\.gz$/i, '').replace(/\.(jsonl|ndjson|jsonlines)$/i, '');
     const w = await host.openWriter(format, `${base}${S.view ? '-filtered' : ''}.${format}`);
@@ -461,7 +475,7 @@ function createSession({ doc, post, host = {} }) {
           if (id < 0) return post({ type: 'found', what: 'line', pos: -1, line: m.line });
           return post({ type: 'found', what: 'line', pos: posOf(id), line: m.line });
         }
-        case 'export': return await doExport(m.format, m.hidden);
+        case 'export': return await doExport(m.format, m.hidden, m.order);
         case 'openLine': {
           if (m.index >= S.doc.count) return;
           const [rec] = await S.doc.readRecords([m.index]);

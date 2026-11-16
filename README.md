@@ -1,7 +1,7 @@
-# JSONL Viewer, Large JSONL Table & NDJSON Viewer
+# JSONL Viewer
 
-<a href="https://marketplace.visualstudio.com/items?itemName=zovo.zovo-jsonl-viewer"><img src="https://img.shields.io/visual-studio-marketplace/i/zovo.zovo-jsonl-viewer?label=VS%20Code%20installs" alt="VS Code installs"></a>
-<a href="https://marketplace.visualstudio.com/items?itemName=zovo.zovo-jsonl-viewer"><img src="https://img.shields.io/visual-studio-marketplace/v/zovo.zovo-jsonl-viewer?label=version" alt="Version"></a>
+<a href="https://marketplace.visualstudio.com/items?itemName=gavin.jsonl-viewer"><img src="https://img.shields.io/visual-studio-marketplace/i/gavin.jsonl-viewer?label=VS%20Code%20installs" alt="VS Code installs"></a>
+<a href="https://marketplace.visualstudio.com/items?itemName=gavin.jsonl-viewer"><img src="https://img.shields.io/visual-studio-marketplace/v/gavin.jsonl-viewer?label=version" alt="Version"></a>
 <img src="https://img.shields.io/badge/offline-no%20telemetry-2ea44f" alt="Offline, no telemetry">
 
 A JSONL viewer and NDJSON viewer for VS Code. Open any `.jsonl`, `.ndjson` or `.jsonl.gz` file as a table, a record tree or a chat transcript, with the first rows on screen before the rest of the file is read.
@@ -34,7 +34,9 @@ To edit the raw text, click Open as Text. Run "JSONL Viewer: Get Started" for a 
 
 The table makes one column per top-level key, from the first 1,000 records. Each header shows the type (`string`, `int`, `float`, `bool`, `object`, `array` or `mixed`) and how many of those records fill that key. Click a header to sort the whole view. Clicks cycle through ascending, descending and file order, and missing values go last. Click a cell to open its value as a tree below the table. Double-click a row, or press Enter, to open the record.
 
-Click Columns above the table to pick which columns show. The list has a find box for wide files, Show all, and Hide all but first. Drag the right edge of a column header to change its width, or double-click the edge to fit it again. Hidden columns and widths stay with the tab while it is open. Find and Filter still search hidden columns, and CSV export leaves them out.
+Click Columns above the table to pick which columns show. The list has a find box for wide files, Show all, and Hide all but first. Drag the grip at the left of a header to reorder columns; drag its right edge to change its width, or double-click the edge to fit it again. Column order, hidden columns and widths are saved in the current workspace and reused by files with the same set of columns. CSV export follows the visible column order and leaves hidden columns out. Find and Filter still search hidden columns.
+
+ISO 8601 timestamps in table cells display with a space instead of `T`; a trailing `Z` displays as `UTC`. The original JSON values and exported data are unchanged, and hovering a formatted cell shows the raw value.
 
 To read a log or an export that isn't named `.jsonl`, right-click it in the Explorer (`.log`, `.json`, `.txt`, `.out` and `.data` files) or its editor tab and pick "Open as JSON Lines (any file)". The same command is in the Command Palette for any file. If none of the first lines is valid JSON, a note says so and offers Open as Text, so you never get an empty page.
 
@@ -73,6 +75,9 @@ JSONL Viewer runs offline. It makes no network calls and has no telemetry. The w
 |---|---|---|
 | `jsonlViewer.liveTail` | `true` | Add new records while the file grows |
 | `jsonlViewer.askForRating` | `true` | Ask one time for a Marketplace rating, after 5 files and 2 days. Turn it off with `false` |
+| `jsonlViewer.timestampDisplay` | `utc` | Show ISO timestamps in UTC, local time, or unchanged (`raw`). Formatting applies only to columns with timestamp-like names |
+
+Use the **Columns** menu to save named column layouts in the current workspace. Layout presets can be selected on another JSONL file; columns not present in the file are ignored and new columns are appended.
 
 ## Using it with Agent Session Viewer
 

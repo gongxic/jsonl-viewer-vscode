@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 // the extensions people use together with this one first. Pairs come from mon1-work/products.json.
 const support = require('../src/support.js');
 
-const SELF = 'zovo.zovo-jsonl-viewer';
+const SELF = 'gavin.jsonl-viewer';
 
 test('More free viewers lists live extensions first, once each, without this one', () => {
   const list = support.otherProducts(SELF);

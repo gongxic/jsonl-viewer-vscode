@@ -3,6 +3,45 @@
 
 const MAX_BODY_PX = 8000000; // stay well under browser element height limits
 
+function isTimestampColumn(name) {
+  const normalized = String(name || '')
+    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_|_$/g, '');
+  const parts = normalized.split('_');
+  return parts.some(part => ['timestamp', 'datetime', 'date', 'time', 'ts'].includes(part))
+    || /(?:^|_)(?:created|updated|deleted|modified|started|ended|received|sent|logged|event|request|response)_?at$/.test(normalized);
+}
+
+function formatTimestamp(value, columnName, mode = 'utc') {
+  if (typeof value !== 'string' || mode === 'raw' || !isTimestampColumn(columnName)) return value;
+  const match = /^(\d{4}-\d{2}-\d{2})T((?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?)(Z|[+-](?:(?:0\d|1[0-3]):[0-5]\d|14:00))$/i.exec(value);
+  if (!match) return value;
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) return value;
+  const date = new Date(`${match[1]}T00:00:00Z`);
+  if (date.toISOString().slice(0, 10) !== match[1]) return value;
+  const instant = new Date(parsed);
+  const local = mode === 'local';
+  const year = local ? instant.getFullYear() : instant.getUTCFullYear();
+  const month = (local ? instant.getMonth() : instant.getUTCMonth()) + 1;
+  const day = local ? instant.getDate() : instant.getUTCDate();
+  const hours = local ? instant.getHours() : instant.getUTCHours();
+  const minutes = local ? instant.getMinutes() : instant.getUTCMinutes();
+  const seconds = local ? instant.getSeconds() : instant.getUTCSeconds();
+  const pad = n => String(n).padStart(2, '0');
+  const fraction = (match[2].match(/\.\d+$/) || [''])[0];
+  let zone = 'UTC';
+  if (local) {
+    const offset = -instant.getTimezoneOffset();
+    const sign = offset >= 0 ? '+' : '-';
+    const absolute = Math.abs(offset);
+    zone += `${sign}${pad(Math.floor(absolute / 60))}:${pad(absolute % 60)}`;
+  }
+  return `${String(year).padStart(4, '0')}-${pad(month)}-${pad(day)} ${pad(hours)}:${pad(minutes)}:${pad(seconds)}${fraction} ${zone}`;
+}
+
 function scrollToRow(scrollTop, rowCount, rowH, viewportBodyH) {
   const realH = rowCount * rowH;
   const bodyH = Math.min(realH, MAX_BODY_PX);
@@ -49,6 +88,14 @@ function nextSort(sort, col) {
   return null;
 }
 
+function moveColumn(order, source, target, after = false) {
+  if (!Array.isArray(order) || !source || source === target || !order.includes(source) || !order.includes(target)) return order;
+  const next = order.filter(name => name !== source);
+  const targetIndex = next.indexOf(target);
+  next.splice(targetIndex + (after ? 1 : 0), 0, source);
+  return next;
+}
+
 function visibleColumns(left, widths, scrollLeft, viewW, gutterW, overscan = 2) {
   const n = widths.length;
   if (!n) return { c0: 0, c1: -1 };
@@ -69,4 +116,4 @@ function columnLefts(widths) {
   return left;
 }
 
-module.exports = { MAX_BODY_PX, scrollToRow, rowToScroll, pagesFor, autoWidth, gutterWidth, nextSort, visibleColumns, columnLefts };
+module.exports = { MAX_BODY_PX, isTimestampColumn, formatTimestamp, scrollToRow, rowToScroll, pagesFor, autoWidth, gutterWidth, nextSort, moveColumn, visibleColumns, columnLefts };

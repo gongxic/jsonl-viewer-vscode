@@ -43,7 +43,7 @@ test('support: package.json has the sponsor field, the two commands and the sett
   const cfg = Array.isArray(pkg.contributes.configuration) ? pkg.contributes.configuration : [pkg.contributes.configuration];
   const props = Object.assign({}, ...cfg.map(c => c.properties));
   assert.strictEqual(props['jsonlViewer.showSupportLinks'].default, true);
-  assert.ok(support.otherProducts('zovo.zovo-jsonl-viewer').every(p => p.id !== 'zovo.zovo-jsonl-viewer'));
+  assert.ok(support.otherProducts('gavin.jsonl-viewer').every(p => p.id !== 'gavin.jsonl-viewer'));
 });
 
 test('support: the footer shows by default and jsonlViewer.showSupportLinks=false hides it', async () => {
@@ -72,5 +72,78 @@ test('support: the footer shows by default and jsonlViewer.showSupportLinks=fals
       assert.strictEqual(webview.html.includes('command:jsonlViewer.moreViewers'), shown);
       assert.deepStrictEqual(webview.options.enableCommandUris, ['jsonlViewer.supportDeveloper', 'jsonlViewer.moreViewers', 'workbench.action.openSettings']);
     } finally { dispose(); Module._load = orig; }
+  }
+});
+
+test('workspace column preferences round-trip through the custom editor', async () => {
+  const dist = path.join(__dirname, '..', 'dist', 'extension.js');
+  const sample = path.join(__dirname, '..', 'samples', 'eval-results.jsonl');
+  let provider, receive, dispose = () => {};
+  const posted = [];
+  const stored = new Map();
+  const workspaceState = {
+    get: (key, fallback) => stored.has(key) ? stored.get(key) : fallback,
+    update: async (key, value) => { stored.set(key, value); },
+  };
+  const Uri = { joinPath: (u, ...p) => ({ path: path.posix.join(u.path, ...p), fsPath: path.join(u.fsPath, ...p) }) };
+  const vscode = {
+    Uri,
+    window: {
+      registerCustomEditorProvider: (id, p) => { provider = p; return { dispose() {} }; },
+      showInformationMessage: async () => {},
+      showErrorMessage: async message => { throw new Error(message); },
+    },
+    commands: { registerCommand: () => ({ dispose() {} }), executeCommand: async () => {} },
+    workspace: { getConfiguration: () => ({ get: (_key, fallback) => fallback }) },
+    env: { clipboard: { writeText: async () => {} } },
+  };
+  const orig = Module._load;
+  Module._load = function (req, ...rest) { return req === 'vscode' ? vscode : orig.call(this, req, ...rest); };
+  try {
+    delete require.cache[dist];
+    require(dist).activate({ subscriptions: [], extensionUri: { path: '/ext', fsPath: '/ext' }, workspaceState });
+    const webview = {
+      cspSource: 'vscode-webview://t', options: null, html: '',
+      asWebviewUri: u => ({ toString: () => 'vscode-webview://t' + u.path }),
+      postMessage: message => { posted.push(message); return Promise.resolve(true); },
+      onDidReceiveMessage: fn => { receive = fn; return { dispose() {} }; },
+    };
+    const panel = {
+      webview, visible: false,
+      onDidDispose: fn => { dispose = fn; return { dispose() {} }; },
+    };
+    await provider.resolveCustomEditor({ uri: { scheme: 'file', path: sample, fsPath: sample } }, panel);
+    await receive({ type: 'saveColumnPreferences', columns: ['level', 'message'], hidden: ['message'], widths: { level: 180 }, order: ['message', 'level'] });
+    await receive({ type: 'getColumnPreferences', columns: ['message', 'level'] });
+    await receive({ type: 'getColumnProfiles' });
+    await receive({ type: 'saveColumnProfile', name: 'Compact', columns: ['level', 'message'], hidden: ['message'], widths: { level: 180 }, order: ['message', 'level'] });
+    await receive({ type: 'getColumnProfile', name: 'Compact', columns: ['time', 'level'] });
+    await receive({ type: 'deleteColumnProfile', name: 'Compact' });
+
+    assert.deepStrictEqual(posted.find(m => m.type === 'columnPreferences'), {
+      type: 'columnPreferences',
+      schema: '["level","message"]',
+      found: true,
+      hidden: ['message'],
+      widths: { level: 180 },
+      order: ['message', 'level'],
+    });
+    assert.deepStrictEqual(posted.find(m => m.type === 'columnProfiles'), {
+      type: 'columnProfiles',
+      profiles: [],
+    });
+    assert.deepStrictEqual(posted.find(m => m.type === 'columnProfile'), {
+      type: 'columnProfile',
+      name: 'Compact',
+      schema: '["level","time"]',
+      found: true,
+      hidden: [],
+      widths: { level: 180 },
+      order: ['level', 'time'],
+    });
+    assert.deepStrictEqual(posted.filter(m => m.type === 'columnProfiles').map(m => m.profiles), [[], ['Compact'], []]);
+  } finally {
+    dispose();
+    Module._load = orig;
   }
 });

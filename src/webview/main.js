@@ -7,6 +7,7 @@ const { pathString } = require('../core/jsonpath');
 
 const vscode = acquireVsCodeApi();
 const saved = vscode.getState() || {};
+const appElement = document.getElementById('app');
 const ROW_H = 24;
 const HEAD_H = 40;
 const PAGE = 200;
@@ -14,7 +15,8 @@ const MAX_COLS = 300;
 const NUMERIC = new Set(['int', 'float']);
 
 const S = {
-  name: document.getElementById('app').dataset.title || '',
+  name: appElement.dataset.title || '',
+  timestampDisplay: ['utc', 'local', 'raw'].includes(appElement.dataset.timestampDisplay) ? appElement.dataset.timestampDisplay : 'utc',
   format: '',
   columns: [],
   widths: [],
@@ -38,8 +40,14 @@ const S = {
   info: null,
   fatal: '',
   job: null,
-  hidden: new Set(saved.hidden || []), // column names the user hid (kept per tab)
-  userW: Object.assign(Object.create(null), saved.widths || {}), // column widths the user dragged, by name
+  hidden: new Set(saved.hidden || []), // Per-tab fallback; shared workspace preferences replace it when available.
+  userW: Object.assign(Object.create(null), saved.widths || {}), // Per-tab fallback widths, by column name.
+  order: Array.isArray(saved.order) ? saved.order : [],
+  columnSchema: '',
+  dragColumn: '',
+  profiles: [],
+  profilesLoaded: false,
+  profileName: typeof saved.profileName === 'string' ? saved.profileName : '',
 };
 
 function el(tag, cls, text) {
@@ -59,11 +67,27 @@ function fmtBytes(n) {
 }
 function fmtMs(ms) { return ms < 1000 ? `${Math.max(1, Math.round(ms))} ms` : `${(ms / 1000).toFixed(2)} s`; }
 function post(m) { vscode.postMessage(m); }
+function currentColumnNames() { return S.columns.slice(0, MAX_COLS).map(c => c.name); }
+function columnSchema(names) { return JSON.stringify([...names].sort()); }
+function saveColumnPreferences() {
+  const names = currentColumnNames();
+  if (!names.length) return;
+  const widths = {};
+  for (const name of names) if (Number.isFinite(S.userW[name])) widths[name] = S.userW[name];
+  const allowed = new Set(names);
+  post({
+    type: 'saveColumnPreferences',
+    columns: names,
+    hidden: names.filter(name => S.hidden.has(name)),
+    widths,
+    order: S.order.filter(name => allowed.has(name)),
+  });
+}
 function saveState() {
   const widths = {};
   let n = 0;
   for (const k of Object.keys(S.userW)) { if (n++ >= 500) break; widths[k] = S.userW[k]; }
-  vscode.setState({ mode: S.mode, hidden: [...S.hidden].slice(0, 1000), widths });
+  vscode.setState({ mode: S.mode, hidden: [...S.hidden].slice(0, 1000), widths, order: S.order.slice(0, MAX_COLS), profileName: S.profileName });
 }
 
 // ---------- layout ----------
@@ -233,11 +257,36 @@ function isHidden(c) { return S.columns[c] ? S.hidden.has(S.columns[c].name) : f
 function totalWidth() { let w = S.gutterW; for (let c = 0; c < S.widths.length; c++) if (!isHidden(c)) w += S.widths[c]; return w; }
 function shownCols() { return Math.min(S.columns.length, MAX_COLS); }
 
+function columnIndices() {
+  const byName = new Map(S.columns.slice(0, MAX_COLS).map((column, index) => [column.name, index]));
+  const indices = [];
+  for (const name of S.order) {
+    const index = byName.get(name);
+    if (index !== undefined) {
+      indices.push(index);
+      byName.delete(name);
+    }
+  }
+  for (const index of byName.values()) indices.push(index);
+  return indices;
+}
+
+function reorderColumn(source, target, after) {
+  const order = M.moveColumn(S.order, source, target, after);
+  if (order === S.order) return;
+  S.order = order;
+  saveState();
+  saveColumnPreferences();
+  buildHeader();
+  if (!colMenu.hidden) fillColMenu();
+  layout();
+}
+
 function buildHeader() {
   head.textContent = '';
   const corner = el('div', 'cell gutter corner', 'line');
   head.append(corner);
-  for (let c = 0; c < shownCols(); c++) {
+  for (const c of columnIndices()) {
     const col = S.columns[c];
     if (S.hidden.has(col.name)) continue;
     const h = el('div', 'cell hcell');
@@ -246,9 +295,42 @@ function buildHeader() {
     grip.title = 'Drag to change the width. Double-click to fit.';
     grip.addEventListener('click', e => e.stopPropagation());
     grip.addEventListener('pointerdown', e => startResize(e, c, h));
-    grip.addEventListener('dblclick', e => { e.stopPropagation(); delete S.userW[col.name]; S.widths[c] = M.autoWidth(col.name, typeLabel(col), []); S.autoSized = false; saveState(); buildHeader(); layout(); });
+    grip.addEventListener('dblclick', e => { e.stopPropagation(); delete S.userW[col.name]; S.widths[c] = M.autoWidth(col.name, typeLabel(col), []); S.autoSized = false; saveState(); saveColumnPreferences(); buildHeader(); layout(); });
     h.append(grip);
     const top = el('div', 'hrow');
+    const dragHandle = el('span', 'draghandle', '⋮⋮');
+    dragHandle.draggable = true;
+    dragHandle.title = 'Drag to reorder this column';
+    dragHandle.addEventListener('click', e => e.stopPropagation());
+    dragHandle.addEventListener('dragstart', e => {
+      e.stopPropagation();
+      S.dragColumn = col.name;
+      if (e.dataTransfer) {
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', col.name);
+      }
+    });
+    dragHandle.addEventListener('dragend', () => {
+      S.dragColumn = '';
+      for (const cell of head.querySelectorAll('.drop-target')) cell.classList.remove('drop-target');
+    });
+    h.addEventListener('dragover', e => {
+      if (!S.dragColumn || S.dragColumn === col.name) return;
+      e.preventDefault();
+      h.classList.add('drop-target');
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+    });
+    h.addEventListener('dragleave', e => {
+      if (!h.contains(e.relatedTarget)) h.classList.remove('drop-target');
+    });
+    h.addEventListener('drop', e => {
+      e.preventDefault();
+      h.classList.remove('drop-target');
+      const source = S.dragColumn || (e.dataTransfer && e.dataTransfer.getData('text/plain'));
+      reorderColumn(source, col.name, e.clientX > h.getBoundingClientRect().left + h.offsetWidth / 2);
+      S.dragColumn = '';
+    });
+    top.append(dragHandle);
     top.append(el('span', 'hname', col.name));
     const arrow = el('span', 'sort', S.sort && S.sort.col === col.name ? (S.sort.dir === 'asc' ? '▲' : '▼') : '');
     top.append(arrow);
@@ -273,11 +355,79 @@ function setColumns(columns, chat) {
   S.chat = chat || '';
   tabChat.disabled = !S.chat;
   tabChat.title = S.chat ? 'Messages as a conversation (C)' : 'No messages, role/content or prompt keys found in the first records';
+  const names = currentColumnNames();
+  const available = new Set(names);
+  const seen = new Set();
+  const order = [];
+  for (const name of S.order) {
+    if (available.has(name) && !seen.has(name)) { seen.add(name); order.push(name); }
+  }
+  S.order = order;
+  for (const name of names) if (!S.order.includes(name)) S.order.push(name);
+  const schema = columnSchema(names);
+  const requestPreferences = schema && schema !== S.columnSchema;
+  if (requestPreferences) S.columnSchema = schema;
   S.widths = S.columns.slice(0, MAX_COLS).map(c => S.userW[c.name] || M.autoWidth(c.name, typeLabel(c), []));
   S.autoSized = false;
   buildHeader();
   if (!colMenu.hidden) fillColMenu();
   updateColsBtn();
+  if (requestPreferences) post({ type: 'getColumnPreferences', columns: names });
+  if (requestPreferences && !S.profilesLoaded) post({ type: 'getColumnProfiles' });
+  else if (requestPreferences && S.profileName) post({ type: 'getColumnProfile', name: S.profileName, columns: names });
+}
+
+function applyLayoutPreferences(m) {
+  const names = new Set(currentColumnNames());
+  S.hidden = new Set(Array.isArray(m.hidden) ? m.hidden.filter(name => names.has(name)) : []);
+  S.userW = Object.assign(Object.create(null), m.widths || {});
+  S.order = Array.isArray(m.order) ? m.order.filter(name => names.has(name)) : [];
+  for (const name of names) if (!S.order.includes(name)) S.order.push(name);
+  S.widths = S.columns.slice(0, MAX_COLS).map(c => S.userW[c.name] || M.autoWidth(c.name, typeLabel(c), []));
+  S.autoSized = false;
+  saveState();
+  buildHeader();
+  if (!colMenu.hidden) fillColMenu();
+  updateColsBtn();
+  layout();
+}
+
+function applyColumnPreferences(m) {
+  if (m.schema !== S.columnSchema || S.profileName) return;
+  if (!m.found) { saveColumnPreferences(); return; }
+  applyLayoutPreferences(m);
+}
+
+function applyColumnProfile(m) {
+  if (m.name !== S.profileName || m.schema !== S.columnSchema) return;
+  if (!m.found) {
+    S.profileName = '';
+    saveState();
+    flash('That column layout no longer exists');
+    post({ type: 'getColumnPreferences', columns: currentColumnNames() });
+    return;
+  }
+  applyLayoutPreferences(m);
+}
+
+function setColumnProfiles(m) {
+  S.profiles = Array.isArray(m.profiles) ? m.profiles.filter(name => typeof name === 'string') : [];
+  S.profilesLoaded = true;
+  if (m.saved) {
+    S.profileName = m.saved;
+    saveState();
+  } else if (m.deleted === S.profileName) {
+    S.profileName = '';
+    saveState();
+    post({ type: 'getColumnPreferences', columns: currentColumnNames() });
+  } else if (S.profileName && S.profiles.includes(S.profileName)) {
+    post({ type: 'getColumnProfile', name: S.profileName, columns: currentColumnNames() });
+  } else if (S.profileName) {
+    S.profileName = '';
+    saveState();
+    post({ type: 'getColumnPreferences', columns: currentColumnNames() });
+  }
+  if (!colMenu.hidden) fillColMenu();
 }
 
 // ---------- column width and visibility ----------
@@ -303,6 +453,7 @@ function startResize(e, c, h) {
     document.body.classList.remove('resizing');
     S.userW[name] = S.widths[c];
     saveState();
+    saveColumnPreferences();
     buildHeader();
   };
   grip.addEventListener('pointermove', move);
@@ -323,6 +474,7 @@ function setHidden(name, hide) {
   for (let c = 0; c < shownCols(); c++) if (!isHidden(c)) shown++;
   if (!shown && hide) { S.hidden.delete(name); flash('Keep at least one column'); }
   saveState();
+  saveColumnPreferences();
   updateColsBtn();
   buildHeader();
   layout();
@@ -330,6 +482,52 @@ function setHidden(name, hide) {
 
 function fillColMenu() {
   colMenu.textContent = '';
+  const profileBar = el('div', 'profilebar');
+  const profileSelect = el('select', 'profile-select');
+  profileSelect.setAttribute('aria-label', 'Column layout preset');
+  const defaultProfile = el('option', null, 'Default layout for these columns');
+  defaultProfile.value = '';
+  profileSelect.append(defaultProfile);
+  for (const name of S.profiles) {
+    const option = el('option', null, name);
+    option.value = name;
+    profileSelect.append(option);
+  }
+  profileSelect.value = S.profiles.includes(S.profileName) ? S.profileName : '';
+  const profileName = el('input', 'profile-name');
+  profileName.type = 'text';
+  profileName.maxLength = 60;
+  profileName.placeholder = 'New layout name';
+  profileName.setAttribute('aria-label', 'New column layout name');
+  const saveProfile = btn('Save', 'Save the current columns as a named layout');
+  const deleteProfile = btn('Delete', 'Delete the selected named layout');
+  deleteProfile.disabled = !profileSelect.value;
+  profileSelect.addEventListener('change', () => {
+    S.profileName = profileSelect.value;
+    saveState();
+    if (S.profileName) post({ type: 'getColumnProfile', name: S.profileName, columns: currentColumnNames() });
+    else post({ type: 'getColumnPreferences', columns: currentColumnNames() });
+  });
+  saveProfile.addEventListener('click', () => {
+    const name = profileName.value.trim() || S.profileName;
+    if (!name) { flash('Enter a layout name'); profileName.focus(); return; }
+    const columns = currentColumnNames();
+    const allowed = new Set(columns);
+    const widths = {};
+    for (const column of columns) if (Number.isFinite(S.userW[column])) widths[column] = S.userW[column];
+    post({
+      type: 'saveColumnProfile',
+      name,
+      columns,
+      hidden: columns.filter(column => S.hidden.has(column)),
+      widths,
+      order: S.order.filter(column => allowed.has(column)),
+    });
+  });
+  deleteProfile.addEventListener('click', () => {
+    if (S.profileName) post({ type: 'deleteColumnProfile', name: S.profileName });
+  });
+  profileBar.append(profileSelect, profileName, saveProfile, deleteProfile);
   const top = el('div', 'colmenu-top');
   const find = el('input', 'colfind');
   find.type = 'search';
@@ -340,7 +538,7 @@ function fillColMenu() {
   top.append(find, all, none);
   const list = el('div', 'colmenu-list');
   const items = [];
-  for (let c = 0; c < shownCols(); c++) {
+  for (const c of columnIndices()) {
     const col = S.columns[c];
     const lab = el('label', 'colitem');
     const box = el('input');
@@ -355,13 +553,14 @@ function fillColMenu() {
   if (S.columns.length > MAX_COLS) list.append(el('div', 'colnote', `The first ${fmtN(MAX_COLS)} of ${fmtN(S.columns.length)} keys are columns.`));
   if (!items.length) list.append(el('div', 'colnote', 'No columns yet.'));
   find.addEventListener('input', () => { const q = find.value.toLowerCase(); for (const [n, lab] of items) lab.hidden = !!q && !n.includes(q); });
-  all.addEventListener('click', () => { S.hidden.clear(); saveState(); updateColsBtn(); buildHeader(); layout(); fillColMenu(); });
+  all.addEventListener('click', () => { S.hidden.clear(); saveState(); saveColumnPreferences(); updateColsBtn(); buildHeader(); layout(); fillColMenu(); });
   none.addEventListener('click', () => {
-    for (let c = 1; c < shownCols(); c++) S.hidden.add(S.columns[c].name);
-    if (S.columns[0]) S.hidden.delete(S.columns[0].name);
-    saveState(); updateColsBtn(); buildHeader(); layout(); fillColMenu();
+    const order = columnIndices();
+    for (const c of order.slice(1)) S.hidden.add(S.columns[c].name);
+    if (order.length) S.hidden.delete(S.columns[order[0]].name);
+    saveState(); saveColumnPreferences(); updateColsBtn(); buildHeader(); layout(); fillColMenu();
   });
-  colMenu.append(top, list, el('div', 'colnote', 'Hidden columns are left out of the table and of CSV export. Find and Filter still search them.'));
+  colMenu.append(profileBar, top, list, el('div', 'colnote', 'Layouts are saved in this workspace and can be reused with different columns. Hidden columns are left out of CSV export; Find and Filter still search them.'));
   return find;
 }
 
@@ -447,6 +646,7 @@ function render() {
   while (rowPool.length < n) { const r = makeRow(); rowPool.push(r); body.append(r); }
   body.style.transform = `translateY(${-shift}px)`;
   const cols = shownCols();
+  const indices = columnIndices();
   const missing = [];
   for (let k = 0; k < rowPool.length; k++) {
     const r = rowPool[k];
@@ -460,7 +660,10 @@ function render() {
     r._g.textContent = row ? fmtN(row.line) : '';
     if (!row) {
       fillCells(r, cols);
-      for (let c = 0; c < cols; c++) { const d = r._cells[c]; d.className = 'cell pending'; d.textContent = ''; d.style.width = S.widths[c] + 'px'; d.hidden = isHidden(c); }
+      for (let visual = 0; visual < cols; visual++) {
+        const c = indices[visual], d = r._cells[visual];
+        d.className = 'cell pending'; d.textContent = ''; d.style.width = S.widths[c] + 'px'; d.hidden = isHidden(c);
+      }
       missing.push(pos);
       r.classList.remove('badrow', 'truncrow');
       continue;
@@ -477,15 +680,17 @@ function render() {
       continue;
     }
     fillCells(r, cols);
-    for (let c = 0; c < cols; c++) {
-      const d = r._cells[c];
+    for (let visual = 0; visual < cols; visual++) {
+      const c = indices[visual], d = r._cells[visual];
       d._c = c;
       d.style.width = S.widths[c] + 'px';
       const v = row.cells[c];
       const kind = row.kinds[c];
       d.className = 'cell k-' + kind + (NUMERIC.has(kind) ? ' num' : '');
       d.hidden = isHidden(c);
-      d.textContent = v === null || v === undefined ? '' : v;
+      const displayValue = M.formatTimestamp(v, col.name, S.timestampDisplay);
+      d.textContent = displayValue === null || displayValue === undefined ? '' : displayValue;
+      d.title = displayValue === v ? '' : v;
     }
   }
   if (missing.length) request(missing[0], missing[missing.length - 1]);
@@ -824,7 +1029,14 @@ btnFollow.addEventListener('click', () => {
 exportSel.addEventListener('change', () => {
   const f = exportSel.value;
   exportSel.value = '';
-  if (f) post(f === 'csv' && S.hidden.size ? { type: 'export', format: f, hidden: [...S.hidden].slice(0, 1000) } : { type: 'export', format: f });
+  if (f) {
+    const message = { type: 'export', format: f };
+    if (f === 'csv') {
+      if (S.hidden.size) message.hidden = [...S.hidden].slice(0, 1000);
+      message.order = S.order.slice(0, MAX_COLS);
+    }
+    post(message);
+  }
 });
 badBtn.addEventListener('click', () => post({ type: 'showBad' }));
 nextBadBtn.addEventListener('click', () => post({ type: 'nextBad', after: S.focus }));
@@ -906,6 +1118,15 @@ window.addEventListener('message', ev => {
   const m = ev.data;
   if (!m || typeof m.type !== 'string') return;
   switch (m.type) {
+    case 'columnPreferences':
+      applyColumnPreferences(m);
+      break;
+    case 'columnProfile':
+      applyColumnProfile(m);
+      break;
+    case 'columnProfiles':
+      setColumnProfiles(m);
+      break;
     case 'init': {
       S.info = m;
       S.fatal = '';
