@@ -682,6 +682,7 @@ function render() {
     fillCells(r, cols);
     for (let visual = 0; visual < cols; visual++) {
       const c = indices[visual], d = r._cells[visual];
+      const col = S.columns[c];
       d._c = c;
       d.style.width = S.widths[c] + 'px';
       const v = row.cells[c];
