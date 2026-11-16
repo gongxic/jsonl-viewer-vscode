@@ -69,6 +69,10 @@ Find works on the raw text of each line, so it won't match a character that the 
 
 JSONL Viewer runs offline. It makes no network calls and has no telemetry. The webview runs under a strict Content Security Policy with no remote scripts, and file content goes into the page only as text, never as HTML.
 
+## GitHub builds
+
+Pushes and pull requests targeting `main` or `dev` run the tests and package a VSIX that can be downloaded from the workflow run's artifacts. To publish a GitHub Release with the VSIX attached, update the version in `package.json` and push a `v*` tag such as `v0.2.4`.
+
 ## Settings
 
 | Setting | Default | What it does |
