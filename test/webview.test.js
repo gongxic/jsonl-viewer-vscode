@@ -6,6 +6,9 @@ const path = require('path');
 const { buildHtml } = require('../src/html');
 const { pathString, filterPath } = require('../src/core/jsonpath');
 const { parsePath } = require('../src/core/filter');
+const { parseLine, inferColumns } = require('../src/core/schema');
+const { JsonlDoc } = require('../src/core/doc');
+const { tempDir } = require('./helpers');
 const M = require('../src/webview/math');
 
 const root = path.join(__dirname, '..');
@@ -61,6 +64,26 @@ test('ISO timestamps are formatted only in timestamp columns and support UTC, lo
   assert.equal(M.formatTimestamp(utc, 'timestamp', 'local'), `${localExpected} UTC${date.getTimezoneOffset() <= 0 ? '+' : '-'}${pad(Math.floor(Math.abs(date.getTimezoneOffset()) / 60))}:${pad(Math.abs(date.getTimezoneOffset()) % 60)}`);
   assert.equal(M.formatTimestamp('2026-11-16', 'date'), '2026-11-16');
   assert.equal(M.formatTimestamp('2026-02-31T09:50:36Z', 'timestamp'), '2026-02-31T09:50:36Z');
+});
+
+test('high-precision Serilog @t values from JSONL display as UTC', async () => {
+  const tmp = tempDir('timestamp');
+  const file = tmp.file('log.jsonl');
+  const value = '2026-11-16T13:19:07.123456789Z';
+  fs.writeFileSync(file, `${JSON.stringify({ '@t': value, '@mt': 'request completed' })}\n`);
+  const doc = new JsonlDoc({ path: file });
+  try {
+    await doc.open();
+    const [record] = await doc.readRecords([0]);
+    const parsed = parseLine(record.text);
+    assert.equal(parsed.ok, true);
+    const timestamp = inferColumns([parsed.value]).find(column => column.name === '@t');
+    assert.ok(timestamp);
+    assert.equal(M.formatTimestamp(parsed.value['@t'], timestamp.name), '2026-11-16 13:19:07.123456789 UTC');
+  } finally {
+    await doc.close();
+    tmp.cleanup();
+  }
 });
 
 test('column order moves before or after a target without changing the source array', () => {

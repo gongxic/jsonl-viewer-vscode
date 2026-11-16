@@ -4,6 +4,7 @@
 const MAX_BODY_PX = 8000000; // stay well under browser element height limits
 
 function isTimestampColumn(name) {
+  if (String(name || '').trim().toLowerCase() === '@t') return true;
   const normalized = String(name || '')
     .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
     .toLowerCase()
